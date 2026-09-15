@@ -1,0 +1,897 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>物品管家 · 到期与余量</title>
+    <!-- 使用 SheetJS 用于导出/导入 Excel -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+    <!-- 使用 flatpickr 让日期选择更友好 -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        }
+        body {
+            background: #f4f7fc;
+            margin: 0;
+            padding: 16px;
+            display: flex;
+            justify-content: center;
+        }
+        .app-container {
+            max-width: 1300px;
+            width: 100%;
+            background: white;
+            border-radius: 28px;
+            box-shadow: 0 20px 40px rgba(0, 10, 30, 0.1);
+            padding: 24px;
+        }
+        h1 {
+            font-size: 1.9rem;
+            margin: 0 0 4px 0;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        h1 span {
+            background: #eef4ff;
+            padding: 4px 12px;
+            font-size: 0.9rem;
+            border-radius: 40px;
+            font-weight: 400;
+            color: #1a5cff;
+        }
+        .toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 12px;
+            margin: 20px 0 16px;
+        }
+        .search-box {
+            flex: 2;
+            min-width: 220px;
+            position: relative;
+        }
+        .search-box input {
+            width: 100%;
+            padding: 12px 16px 12px 42px;
+            border: 1px solid #d9e1ec;
+            border-radius: 60px;
+            font-size: 0.95rem;
+            background: #ffffff;
+            transition: 0.2s;
+            outline: none;
+        }
+        .search-box input:focus {
+            border-color: #1a5cff;
+            box-shadow: 0 0 0 3px rgba(26, 92, 255, 0.1);
+        }
+        .search-box::before {
+            content: "🔍";
+            position: absolute;
+            left: 16px;
+            top: 50%;
+            transform: translateY(-50%);
+            opacity: 0.6;
+        }
+        .owner-switch {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: #f0f4fa;
+            padding: 4px 8px 4px 16px;
+            border-radius: 40px;
+        }
+        .owner-switch label {
+            font-size: 0.9rem;
+            color: #3a4b60;
+            font-weight: 500;
+        }
+        .owner-switch select {
+            padding: 8px 12px;
+            border-radius: 30px;
+            border: 1px solid #cfdbe9;
+            background: white;
+            font-weight: 500;
+            cursor: pointer;
+            outline: none;
+        }
+        .btn {
+            padding: 10px 18px;
+            border-radius: 40px;
+            border: none;
+            font-weight: 500;
+            font-size: 0.9rem;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: 0.15s;
+            background: white;
+            border: 1px solid #d0ddeb;
+            color: #1e2f44;
+        }
+        .btn-primary {
+            background: #1a5cff;
+            border: 1px solid #1a5cff;
+            color: white;
+        }
+        .btn-primary:hover {
+            background: #0d4ad9;
+        }
+        .btn:hover {
+            background: #f5f9ff;
+        }
+        .btn-primary:hover {
+            background: #0d4ad9;
+            border-color: #0d4ad9;
+        }
+        .btn-outline {
+            background: white;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.02);
+            border-radius: 16px;
+            overflow: hidden;
+        }
+        th {
+            text-align: left;
+            padding: 16px 12px;
+            background: #f8fafd;
+            font-weight: 600;
+            color: #2c3e50;
+            border-bottom: 2px solid #e2e9f2;
+            white-space: nowrap;
+        }
+        td {
+            padding: 14px 12px;
+            border-bottom: 1px solid #eef2f7;
+            vertical-align: middle;
+        }
+        tr:last-child td {
+            border-bottom: none;
+        }
+        tr:hover td {
+            background: #fafcff;
+        }
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 50px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            letter-spacing: 0.3px;
+        }
+        .badge-danger {
+            background: #ffe9e9;
+            color: #c62828;
+        }
+        .badge-warn {
+            background: #fff3e0;
+            color: #b85c00;
+        }
+        .badge-ok {
+            background: #e6f7e6;
+            color: #1e7e34;
+        }
+        .badge-expired {
+            background: #f0f0f0;
+            color: #6b6b6b;
+        }
+        .badge-low {
+            background: #ffebe6;
+            color: #c0392b;
+            border: 1px solid #ffb4a2;
+        }
+        .action-icons {
+            display: flex;
+            gap: 6px;
+        }
+        .icon-btn {
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            font-size: 1.2rem;
+            padding: 6px 8px;
+            border-radius: 30px;
+            transition: 0.1s;
+            line-height: 1;
+        }
+        .icon-btn:hover {
+            background: #eef3fc;
+        }
+        .empty-message {
+            text-align: center;
+            padding: 50px 20px;
+            color: #8b9bb5;
+            background: #fbfdff;
+            border-radius: 24px;
+            font-size: 1rem;
+        }
+        .footer-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+        .import-label {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 10px 18px;
+            background: white;
+            border: 1px solid #d0ddeb;
+            border-radius: 40px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: 0.15s;
+        }
+        .import-label:hover {
+            background: #f5f9ff;
+        }
+        .import-label input {
+            display: none;
+        }
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            padding: 16px;
+        }
+        .modal-card {
+            background: white;
+            border-radius: 28px;
+            max-width: 500px;
+            width: 100%;
+            padding: 28px 24px;
+            box-shadow: 0 30px 50px rgba(0, 20, 50, 0.2);
+        }
+        .modal-card h2 {
+            margin-top: 0;
+            margin-bottom: 20px;
+            font-weight: 600;
+        }
+        .form-group {
+            margin-bottom: 18px;
+        }
+        .form-group label {
+            display: block;
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: #2e405b;
+            margin-bottom: 6px;
+        }
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 12px 14px;
+            border-radius: 14px;
+            border: 1px solid #d4dfec;
+            font-size: 0.95rem;
+            outline: none;
+            background: #fbfdff;
+        }
+        .form-group input:focus, .form-group select:focus {
+            border-color: #1a5cff;
+            background: white;
+        }
+        .modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+            margin-top: 24px;
+        }
+        .unit-hint {
+            font-size: 0.8rem;
+            color: #6f7e93;
+            margin-top: 4px;
+        }
+        .owner-tag {
+            background: #e1ebf9;
+            padding: 2px 8px;
+            border-radius: 30px;
+            font-size: 0.7rem;
+            margin-left: 6px;
+            color: #1a4c9e;
+        }
+        .low-stock-row td:first-child::before {
+            content: "⚠️ ";
+            font-size: 1rem;
+        }
+        /* 简单响应式 */
+        @media (max-width: 700px) {
+            .app-container { padding: 16px; }
+            th, td { padding: 10px 8px; font-size: 0.8rem; }
+            .btn span { display: none; }
+            .btn { padding: 10px 14px; }
+            .import-label span { display: none; }
+        }
+    </style>
+</head>
+<body>
+<div class="app-container">
+    <h1>📦 物品管家 <span>到期·余量·多人</span></h1>
+
+    <!-- 工具栏 -->
+    <div class="toolbar">
+        <div class="search-box">
+            <input type="text" id="searchInput" placeholder="搜索物品名称..." autocomplete="off">
+        </div>
+        <div class="owner-switch">
+            <label for="ownerSelect">管理者</label>
+            <select id="ownerSelect">
+                <option value="自己">👤 自己</option>
+                <option value="家人">👪 家人</option>
+                <option value="朋友">🤝 朋友</option>
+                <option value="其他">📦 其他</option>
+            </select>
+        </div>
+        <button class="btn btn-primary" id="addBtn">➕ <span>添加物品</span></button>
+    </div>
+
+    <!-- 物品列表 -->
+    <div style="overflow-x: auto;">
+        <table id="itemsTable">
+            <thead>
+                <tr>
+                    <th>物品名称</th>
+                    <th>到期日</th>
+                    <th>剩余/过期</th>
+                    <th>余量</th>
+                    <th>单位</th>
+                    <th>状态</th>
+                    <th style="text-align: center;">操作</th>
+                </tr>
+            </thead>
+            <tbody id="tableBody">
+                <!-- 动态渲染 -->
+            </tbody>
+        </table>
+    </div>
+    <div id="emptyMessage" class="empty-message" style="display: none;">
+        ✨ 还没有物品，点击“添加物品”开始记录吧
+    </div>
+
+    <!-- 底部导入导出 -->
+    <div class="footer-actions">
+        <label class="import-label">
+            📥 <span>导入Excel</span>
+            <input type="file" id="importFile" accept=".xlsx, .xls, .csv">
+        </label>
+        <button class="btn" id="exportBtn">📤 <span>导出Excel</span></button>
+    </div>
+</div>
+
+<!-- 添加/编辑模态框 -->
+<div id="modalOverlay" class="modal-overlay" style="display: none;">
+    <div class="modal-card">
+        <h2 id="modalTitle">添加物品</h2>
+        <input type="hidden" id="editId" value="">
+        <div class="form-group">
+            <label>物品名称 *</label>
+            <input type="text" id="itemName" placeholder="例如：维生素C、口罩">
+        </div>
+        <div class="form-group">
+            <label>到期日</label>
+            <input type="text" id="expiryDate" placeholder="选择日期" readonly style="background: white;">
+        </div>
+        <div class="form-group">
+            <label>余量 *</label>
+            <input type="number" id="quantity" step="any" min="0" placeholder="数量，如 10">
+        </div>
+        <div class="form-group">
+            <label>单位</label>
+            <select id="unitSelect">
+                <option value="片">片</option>
+                <option value="袋">袋</option>
+                <option value="瓶">瓶</option>
+                <option value="支">支</option>
+                <option value="个">个</option>
+                <option value="盒">盒</option>
+                <option value="包">包</option>
+                <option value="罐">罐</option>
+                <option value="粒">粒</option>
+                <option value="ml">ml</option>
+                <option value="g">g</option>
+                <option value="其他">其他</option>
+            </select>
+        </div>
+        <div class="unit-hint">💡 余量低于2时会显示告急提示</div>
+        <div class="modal-actions">
+            <button class="btn" id="modalCancel">取消</button>
+            <button class="btn btn-primary" id="modalSave">保存</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    (function(){
+        // ---------- 数据存储 ----------
+        const STORAGE_KEY = 'item_manager_data_v1';
+        // 当前显示的所有物品 (扁平数组，每个物品包含 owner 字段)
+        let items = [];
+
+        // 当前选中的管理者 (用于添加物品时的owner，以及过滤显示)
+        let currentOwner = '自己';
+
+        // 搜索关键字
+        let searchKeyword = '';
+
+        // 编辑态ID
+        let editingId = null;
+
+        // ---------- DOM 元素 ----------
+        const searchInput = document.getElementById('searchInput');
+        const ownerSelect = document.getElementById('ownerSelect');
+        const addBtn = document.getElementById('addBtn');
+        const tableBody = document.getElementById('tableBody');
+        const emptyMessage = document.getElementById('emptyMessage');
+        const exportBtn = document.getElementById('exportBtn');
+        const importFile = document.getElementById('importFile');
+        const modalOverlay = document.getElementById('modalOverlay');
+        const modalTitle = document.getElementById('modalTitle');
+        const editIdInput = document.getElementById('editId');
+        const itemNameInput = document.getElementById('itemName');
+        const expiryDateInput = document.getElementById('expiryDate');
+        const quantityInput = document.getElementById('quantity');
+        const unitSelect = document.getElementById('unitSelect');
+        const modalCancel = document.getElementById('modalCancel');
+        const modalSave = document.getElementById('modalSave');
+
+        // 初始化 flatpickr
+        const fp = flatpickr(expiryDateInput, {
+            dateFormat: "Y-m-d",
+            allowInput: true,
+            disableMobile: true,
+            theme: "light",
+        });
+
+        // ---------- 工具函数 ----------
+        function generateId() {
+            return Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+        }
+
+        // 计算到期状态: 返回 { text, className, daysLeft }
+        function getExpiryStatus(expiryDateStr) {
+            if (!expiryDateStr) return { text: '无到期日', className: 'badge-ok', daysLeft: null };
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const expiry = new Date(expiryDateStr);
+            if (isNaN(expiry.getTime())) return { text: '日期无效', className: 'badge-ok', daysLeft: null };
+            expiry.setHours(0, 0, 0, 0);
+            const diffTime = expiry - today;
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+            if (diffDays < 0) {
+                return { text: `已过期 ${Math.abs(diffDays)} 天`, className: 'badge-expired', daysLeft: diffDays };
+            } else if (diffDays === 0) {
+                return { text: '今天到期', className: 'badge-danger', daysLeft: 0 };
+            } else if (diffDays <= 7) {
+                return { text: `剩余 ${diffDays} 天`, className: 'badge-warn', daysLeft: diffDays };
+            } else {
+                return { text: `剩余 ${diffDays} 天`, className: 'badge-ok', daysLeft: diffDays };
+            }
+        }
+
+        // 判断是否余量告急 (数量 <= 2)
+        function isLowStock(quantity) {
+            return Number(quantity) <= 2;
+        }
+
+        // 加载数据
+        function loadItems() {
+            const stored = localStorage.getItem(STORAGE_KEY);
+            if (stored) {
+                try {
+                    items = JSON.parse(stored);
+                    // 保证每个物品都有 owner 字段，旧数据迁移
+                    items = items.map(it => {
+                        if (!it.owner) it.owner = '自己';
+                        return it;
+                    });
+                } catch (e) {
+                    items = [];
+                }
+            } else {
+                // 演示数据
+                items = [
+                    { id: generateId(), name: '维生素C', expiry: '2025-12-31', quantity: 10, unit: '片', owner: '自己' },
+                    { id: generateId(), name: '医用口罩', expiry: '2026-06-30', quantity: 1, unit: '袋', owner: '自己' },
+                    { id: generateId(), name: '布洛芬', expiry: '2024-11-15', quantity: 2, unit: '盒', owner: '家人' },
+                    { id: generateId(), name: '洗手液', expiry: '2027-01-01', quantity: 1, unit: '瓶', owner: '朋友' },
+                ];
+            }
+            saveItems();
+        }
+
+        function saveItems() {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+        }
+
+        // 获取当前显示的项目 (根据 owner 筛选 + 搜索)
+        function getFilteredItems() {
+            let filtered = items.filter(item => item.owner === currentOwner);
+            if (searchKeyword.trim() !== '') {
+                const kw = searchKeyword.trim().toLowerCase();
+                filtered = filtered.filter(item => item.name.toLowerCase().includes(kw));
+            }
+            return filtered;
+        }
+
+        // 渲染表格
+        function render() {
+            const filtered = getFilteredItems();
+            tableBody.innerHTML = '';
+
+            if (filtered.length === 0) {
+                emptyMessage.style.display = 'block';
+            } else {
+                emptyMessage.style.display = 'none';
+                // 按到期日排序? 先按名称排序方便查找（可选）
+                filtered.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+                filtered.forEach(item => {
+                    const row = document.createElement('tr');
+                    // 余量告急高亮 (整行轻微标记)
+                    if (isLowStock(item.quantity)) {
+                        row.classList.add('low-stock-row');
+                    }
+
+                    // 名称列 (带owner小标签如果owner不是当前管理者？但是已经过滤了，但保留标签显示更好？就不显示了)
+                    const nameTd = document.createElement('td');
+                    nameTd.textContent = item.name;
+                    // 余量告急额外加个警告标记通过css before做了
+
+                    // 到期日
+                    const expiryTd = document.createElement('td');
+                    expiryTd.textContent = item.expiry || '—';
+
+                    // 剩余/过期天数
+                    const status = getExpiryStatus(item.expiry);
+                    const daysTd = document.createElement('td');
+                    daysTd.textContent = status.text;
+                    // 如果过期或者临期，加点颜色
+                    if (status.className === 'badge-expired') daysTd.style.color = '#6b6b6b';
+                    if (status.className === 'badge-danger') daysTd.style.color = '#c62828';
+                    if (status.className === 'badge-warn') daysTd.style.color = '#b85c00';
+
+                    // 余量
+                    const qtyTd = document.createElement('td');
+                    qtyTd.textContent = item.quantity;
+
+                    // 单位
+                    const unitTd = document.createElement('td');
+                    unitTd.textContent = item.unit || '个';
+
+                    // 状态徽章 (余量告急 / 正常)
+                    const badgeTd = document.createElement('td');
+                    if (isLowStock(item.quantity)) {
+                        const lowSpan = document.createElement('span');
+                        lowSpan.className = 'badge badge-low';
+                        lowSpan.textContent = '⚠️ 余量告急';
+                        badgeTd.appendChild(lowSpan);
+                    } else {
+                        const okSpan = document.createElement('span');
+                        okSpan.className = 'badge badge-ok';
+                        okSpan.textContent = '正常';
+                        badgeTd.appendChild(okSpan);
+                    }
+
+                    // 操作按钮: 编辑 + 删除
+                    const actionTd = document.createElement('td');
+                    actionTd.style.textAlign = 'center';
+                    const actionDiv = document.createElement('div');
+                    actionDiv.className = 'action-icons';
+                    // 编辑按钮
+                    const editBtn = document.createElement('button');
+                    editBtn.className = 'icon-btn';
+                    editBtn.innerHTML = '✏️';
+                    editBtn.title = '编辑';
+                    editBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        openEditModal(item.id);
+                    });
+                    // 删除按钮 (加一个，虽未要求但方便管理)
+                    const delBtn = document.createElement('button');
+                    delBtn.className = 'icon-btn';
+                    delBtn.innerHTML = '🗑️';
+                    delBtn.title = '删除';
+                    delBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        if (confirm(`确定删除「${item.name}」吗？`)) {
+                            deleteItem(item.id);
+                        }
+                    });
+
+                    actionDiv.appendChild(editBtn);
+                    actionDiv.appendChild(delBtn);
+                    actionTd.appendChild(actionDiv);
+
+                    row.appendChild(nameTd);
+                    row.appendChild(expiryTd);
+                    row.appendChild(daysTd);
+                    row.appendChild(qtyTd);
+                    row.appendChild(unitTd);
+                    row.appendChild(badgeTd);
+                    row.appendChild(actionTd);
+
+                    tableBody.appendChild(row);
+                });
+            }
+        }
+
+        // 删除物品
+        function deleteItem(id) {
+            items = items.filter(it => it.id !== id);
+            saveItems();
+            render();
+        }
+
+        // 打开添加模态框
+        function openAddModal() {
+            editingId = null;
+            modalTitle.textContent = '添加物品';
+            editIdInput.value = '';
+            itemNameInput.value = '';
+            fp.clear();
+            quantityInput.value = '';
+            unitSelect.value = '片';
+            // 设置默认owner为当前管理者
+            modalOverlay.style.display = 'flex';
+            itemNameInput.focus();
+        }
+
+        // 打开编辑模态框
+        function openEditModal(id) {
+            const item = items.find(it => it.id === id);
+            if (!item) return;
+            editingId = id;
+            modalTitle.textContent = '编辑物品';
+            editIdInput.value = id;
+            itemNameInput.value = item.name;
+            if (item.expiry) {
+                fp.setDate(item.expiry);
+            } else {
+                fp.clear();
+            }
+            quantityInput.value = item.quantity;
+            unitSelect.value = item.unit || '片';
+            modalOverlay.style.display = 'flex';
+            itemNameInput.focus();
+        }
+
+        // 关闭模态框
+        function closeModal() {
+            modalOverlay.style.display = 'none';
+            editingId = null;
+        }
+
+        // 保存物品 (新增或编辑)
+        function saveItemFromModal() {
+            const name = itemNameInput.value.trim();
+            const expiry = expiryDateInput.value.trim();
+            const quantityRaw = quantityInput.value.trim();
+            const unit = unitSelect.value;
+
+            if (!name) {
+                alert('请填写物品名称');
+                return;
+            }
+            if (quantityRaw === '' || isNaN(Number(quantityRaw)) || Number(quantityRaw) < 0) {
+                alert('请填写有效的余量（数字≥0）');
+                return;
+            }
+            const quantity = Number(quantityRaw);
+
+            // 如果编辑
+            if (editingId) {
+                const index = items.findIndex(it => it.id === editingId);
+                if (index !== -1) {
+                    items[index] = {
+                        ...items[index],
+                        name,
+                        expiry: expiry || '',
+                        quantity,
+                        unit,
+                        // owner不变
+                    };
+                }
+            } else {
+                // 新增物品，owner用当前选中的管理者
+                const newItem = {
+                    id: generateId(),
+                    name,
+                    expiry: expiry || '',
+                    quantity,
+                    unit,
+                    owner: currentOwner,
+                };
+                items.push(newItem);
+            }
+
+            saveItems();
+            closeModal();
+            render();
+        }
+
+        // ---------- 导入导出 ----------
+        // 导出为 Excel (xlsx)
+        function exportToExcel() {
+            // 准备数据: 导出所有物品，包含 owner 列，方便以后导入
+            const exportData = items.map(item => ({
+                '物品名称': item.name,
+                '到期日': item.expiry || '',
+                '余量': item.quantity,
+                '单位': item.unit || '',
+                '管理者': item.owner || '自己',
+            }));
+
+            if (exportData.length === 0) {
+                alert('暂无数据可导出');
+                return;
+            }
+
+            const ws = XLSX.utils.json_to_sheet(exportData);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, '物品清单');
+            XLSX.writeFile(wb, `物品管家_${new Date().toISOString().slice(0,10)}.xlsx`);
+        }
+
+        // 导入 Excel
+        function importFromExcel(file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                    const rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: '' });
+
+                    if (rows.length < 2) {
+                        alert('Excel 文件没有数据或格式不正确');
+                        return;
+                    }
+
+                    // 假设第一行是标题，我们根据标题来映射列
+                    const headers = rows[0].map(h => String(h).trim());
+                    const nameIdx = headers.findIndex(h => h === '物品名称' || h === '名称');
+                    const expiryIdx = headers.findIndex(h => h === '到期日' || h === '到期日期');
+                    const qtyIdx = headers.findIndex(h => h === '余量' || h === '数量');
+                    const unitIdx = headers.findIndex(h => h === '单位');
+                    const ownerIdx = headers.findIndex(h => h === '管理者' || h === '所属' || h === '所有者');
+
+                    if (nameIdx === -1) {
+                        alert('找不到“物品名称”列，请确保Excel包含该列');
+                        return;
+                    }
+
+                    // 询问是否覆盖当前数据 (根据管理者导入会覆盖)
+                    if (!confirm('导入将覆盖当前所有物品数据（包括不同管理者的），确定继续吗？')) {
+                        return;
+                    }
+
+                    const newItems = [];
+                    for (let i = 1; i < rows.length; i++) {
+                        const row = rows[i];
+                        if (!row || row.length === 0) continue;
+
+                        const name = row[nameIdx] ? String(row[nameIdx]).trim() : '';
+                        if (!name) continue; // 跳过空名称行
+
+                        const expiry = expiryIdx !== -1 && row[expiryIdx] ? String(row[expiryIdx]).trim() : '';
+                        const quantityVal = qtyIdx !== -1 && row[qtyIdx] !== undefined && row[qtyIdx] !== '' ? Number(row[qtyIdx]) : 0;
+                        const quantity = isNaN(quantityVal) ? 0 : quantityVal;
+                        const unit = unitIdx !== -1 && row[unitIdx] ? String(row[unitIdx]).trim() : '个';
+                        const owner = ownerIdx !== -1 && row[ownerIdx] ? String(row[ownerIdx]).trim() : '自己';
+
+                        newItems.push({
+                            id: generateId(),
+                            name,
+                            expiry: expiry || '',
+                            quantity,
+                            unit: unit || '个',
+                            owner: owner || '自己',
+                        });
+                    }
+
+                    if (newItems.length === 0) {
+                        alert('没有导入任何有效数据');
+                        return;
+                    }
+
+                    items = newItems;
+                    saveItems();
+                    // 如果当前管理者不在导入的owner列表里，将当前管理者设为第一个出现的owner
+                    const ownersInData = [...new Set(items.map(it => it.owner))];
+                    if (!ownersInData.includes(currentOwner)) {
+                        currentOwner = ownersInData[0] || '自己';
+                        ownerSelect.value = currentOwner;
+                    }
+                    render();
+                    alert(`导入成功，共 ${newItems.length} 条物品`);
+
+                } catch (err) {
+                    console.error(err);
+                    alert('导入失败，请检查文件格式');
+                }
+                // 清空input
+                importFile.value = '';
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        // ---------- 事件绑定 ----------
+        function bindEvents() {
+            // 搜索
+            searchInput.addEventListener('input', (e) => {
+                searchKeyword = e.target.value;
+                render();
+            });
+
+            // 切换管理者
+            ownerSelect.addEventListener('change', (e) => {
+                currentOwner = e.target.value;
+                render();
+            });
+
+            // 添加按钮
+            addBtn.addEventListener('click', openAddModal);
+
+            // 模态框取消
+            modalCancel.addEventListener('click', closeModal);
+            // 点击遮罩关闭
+            modalOverlay.addEventListener('click', (e) => {
+                if (e.target === modalOverlay) closeModal();
+            });
+
+            // 模态框保存
+            modalSave.addEventListener('click', saveItemFromModal);
+
+            // 导出
+            exportBtn.addEventListener('click', exportToExcel);
+
+            // 导入
+            importFile.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    importFromExcel(file);
+                }
+            });
+
+            // 回车快捷保存（模态框中）
+            modalOverlay.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') {
+                    e.preventDefault();
+                    saveItemFromModal();
+                }
+            });
+        }
+
+        // ---------- 初始化 ----------
+        function init() {
+            loadItems();
+            // 默认管理者为自己
+            currentOwner = '自己';
+            ownerSelect.value = '自己';
+            bindEvents();
+            render();
+        }
+
+        init();
+    })();
+</script>
+</body>
+</html>
